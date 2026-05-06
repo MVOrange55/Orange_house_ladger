@@ -8,57 +8,56 @@ from streamlit_option_menu import option_menu
 # 1. Page Configuration
 st.set_page_config(page_title="Orange House Pvt Ltd", layout="wide", page_icon="🟠")
 
-# 2. Clean Light Mode CSS
+# 2. Light Mode CSS - Force High Visibility
 st.markdown("""
     <style>
-    .stApp { background-color: #ffffff; color: #262730; }
+    .stApp { background-color: #ffffff !important; color: #000000 !important; }
     [data-testid="stMetric"] {
-        background-color: #f8f9fa;
+        background-color: #f0f2f6;
         padding: 20px;
-        border-radius: 12px;
-        border: 1px solid #dee2e6;
+        border-radius: 10px;
         border-left: 5px solid #ff7e00;
     }
     .stButton>button {
         background-color: #ff7e00;
         color: white !important;
-        border-radius: 8px;
-        width: 100%;
         font-weight: bold;
     }
-    section[data-testid="stSidebar"] { background-color: #f1f3f5; }
+    /* Fix for sidebar text visibility */
+    section[data-testid="stSidebar"] { background-color: #f8f9fa !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Standardized Data Storage (Column Names Fixed)
-# We use these exact names everywhere to prevent KeyError
-COLUMNS = ["Tracking_ID", "Date", "Type", "Particulars", "Emp_ID", "Recipient", "Approved_By", "Medium", "Amount"]
+# 3. Permanent Column Names - This prevents the KeyError
+# NEVER CHANGE THESE NAMES
+FINAL_COLS = ["Tracking_ID", "Date", "Type", "Particulars", "Emp_ID", "Recipient", "Approved_By", "Medium", "Amount"]
 
+# Initialize Ledger
 if 'ledger_data' not in st.session_state:
-    st.session_state.ledger_data = pd.DataFrame(columns=COLUMNS)
+    st.session_state.ledger_data = pd.DataFrame(columns=FINAL_COLS)
 
-def generate_tracking_id():
+def get_new_tid():
     return f"OHL-{random.randint(1000, 9999)}"
 
-# Sidebar Navigation
+# Side Navigation
 with st.sidebar:
-    st.markdown("<h2 style='text-align: center; color: #ff7e00;'>ORANGE HOUSE</h2>", unsafe_allow_html=True)
-    st.divider()
+    st.markdown("<h1 style='color: #ff7e00; text-align: center;'>ORANGE HOUSE</h1>", unsafe_allow_html=True)
     selected = option_menu(
-        menu_title="Main Menu", 
+        menu_title=None, 
         options=["Dashboard", "Add Receipt", "Add Payment", "Manage Reports", "Cash Counter"],
-        icons=["speedometer2", "plus-circle", "dash-circle", "journal-text", "coin"], 
+        icons=["house", "plus-circle", "dash-circle", "table", "calculator"], 
         default_index=0,
-        styles={"nav-link-selected": {"background-color": "#ff7e00", "color": "white"}}
+        styles={"nav-link-selected": {"background-color": "#ff7e00"}}
     )
 
-# --- DASHBOARD ---
+# --- PAGES ---
+
 if selected == "Dashboard":
     st.title("📊 Financial Summary")
     df = st.session_state.ledger_data
     
     if not df.empty:
-        # Converting Amount to numeric safely to avoid errors
+        # Force Amount to be a number to fix calculation errors
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
         t_in = df[df['Type'] == 'Receipt']['Amount'].sum()
         t_out = df[df['Type'] == 'Payment']['Amount'].sum()
@@ -68,87 +67,80 @@ if selected == "Dashboard":
         c2.metric("Total Outflow", f"₹ {t_out:,.2f}")
         c3.metric("Net Balance", f"₹ {t_in - t_out:,.2f}")
         
-        st.subheader("Transaction History")
-        st.dataframe(df.sort_index(ascending=False), use_container_width=True)
+        st.subheader("Transaction Records")
+        st.dataframe(df, use_container_width=True)
     else:
-        st.info("No records found yet.")
+        st.info("The ledger is currently empty.")
 
-# --- ADD RECEIPT ---
 elif selected == "Add Receipt":
     st.title("📥 Add Receipt")
-    with st.form("r_form", clear_on_submit=True):
+    with st.form("receipt_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
-        dt = col1.date_input("Date", datetime.now())
-        pt = col1.text_input("Particulars")
-        eid = col2.text_input("Employee ID", value="ADMIN")
-        am = col2.number_input("Amount (₹)", min_value=0.0)
-        md = st.selectbox("Medium", ["Bank Transfer", "Cash", "UPI", "Cheque"])
+        d = col1.date_input("Date", datetime.now())
+        p = col1.text_input("Particulars")
+        e = col2.text_input("Employee ID", value="ADMIN")
+        a = col2.number_input("Amount (₹)", min_value=0.0)
+        m = st.selectbox("Medium", ["Cash", "Bank", "UPI"])
         
-        if st.form_submit_button("Save Receipt"):
-            if pt and am > 0:
-                tid = generate_tracking_id()
-                new_row = pd.DataFrame([[tid, str(dt), "Receipt", pt, eid, "Company", "Self", md, am]], columns=COLUMNS)
-                st.session_state.ledger_data = pd.concat([st.session_state.ledger_data, new_row], ignore_index=True)
-                st.success(f"Saved! ID: {tid}")
-            else:
-                st.error("Please enter Particulars and Amount.")
+        if st.form_submit_button("Save Entry"):
+            tid = get_new_tid()
+            # Adding row using the strict column list
+            new_data = [tid, str(d), "Receipt", p, e, "Company", "Self", m, a]
+            new_row = pd.DataFrame([new_data], columns=FINAL_COLS)
+            st.session_state.ledger_data = pd.concat([st.session_state.ledger_data, new_row], ignore_index=True)
+            st.success(f"Receipt Saved! ID: {tid}")
 
-# --- ADD PAYMENT ---
 elif selected == "Add Payment":
     st.title("📤 Add Payment")
-    with st.form("p_form", clear_on_submit=True):
+    with st.form("pay_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
-        dt = col1.date_input("Date", datetime.now())
-        eid = col1.text_input("Employee ID")
-        rc = col1.text_input("Recipient")
-        pt = col2.text_input("Purpose")
-        am = col2.number_input("Amount (₹)", min_value=0.0)
-        ap = col2.text_input("Approved By")
-        md = st.selectbox("Medium", ["Cash", "Bank Transfer", "UPI"])
+        d = col1.date_input("Date", datetime.now())
+        e = col1.text_input("Employee ID")
+        r = col1.text_input("Paid To (Recipient)")
+        p = col2.text_input("Purpose")
+        a = col2.number_input("Amount (₹)", min_value=0.0)
+        app = col2.text_input("Approved By")
+        m = st.selectbox("Medium", ["Cash", "UPI", "Bank"])
         
         if st.form_submit_button("Save Payment"):
-            if eid and rc and am > 0:
-                tid = generate_tracking_id()
-                new_row = pd.DataFrame([[tid, str(dt), "Payment", pt, eid, rc, ap, md, am]], columns=COLUMNS)
+            if e and r and a > 0:
+                tid = get_new_tid()
+                new_data = [tid, str(d), "Payment", p, e, r, app, m, a]
+                new_row = pd.DataFrame([new_data], columns=FINAL_COLS)
                 st.session_state.ledger_data = pd.concat([st.session_state.ledger_data, new_row], ignore_index=True)
-                st.success(f"Payment Recorded! ID: {tid}")
+                st.success(f"Payment Saved! ID: {tid}")
             else:
-                st.error("Fields cannot be empty.")
+                st.error("Please fill all required fields.")
 
-# --- MANAGE REPORTS ---
 elif selected == "Manage Reports":
-    st.title("📝 Manage Records")
+    st.title("📝 Edit & Delete")
     
-    # Editable Table
-    st.subheader("Edit/View Data")
-    updated_df = st.data_editor(st.session_state.ledger_data, num_rows="dynamic", use_container_width=True)
-    if st.button("Save Changes"):
-        st.session_state.ledger_data = updated_df
+    # 1. Edit Section
+    st.subheader("Edit Data Table")
+    edited_df = st.data_editor(st.session_state.ledger_data, use_container_width=True, num_rows="dynamic")
+    if st.button("Commit All Changes"):
+        st.session_state.ledger_data = edited_df
         st.success("Database Updated!")
-
+    
     st.divider()
-
-    # Delete Functionality
-    st.subheader("Delete Record")
+    
+    # 2. Specific Delete
+    st.subheader("Remove Entry")
     if not st.session_state.ledger_data.empty:
-        ids = st.session_state.ledger_data['Tracking_ID'].tolist()
-        to_del = st.selectbox("Select ID to delete:", ["None"] + ids)
-        if st.button("Delete Now"):
+        id_list = st.session_state.ledger_data['Tracking_ID'].tolist()
+        to_del = st.selectbox("Select Tracking ID to delete:", ["None"] + id_list)
+        if st.button("Confirm Delete"):
             if to_del != "None":
                 st.session_state.ledger_data = st.session_state.ledger_data[st.session_state.ledger_data.Tracking_ID != to_del]
-                st.warning(f"Record {to_del} deleted.")
+                st.warning(f"Record {to_del} removed.")
                 st.rerun()
-    else:
-        st.write("No records to delete.")
 
-    # Excel Download
-    if not st.session_state.ledger_data.empty:
-        buf = io.BytesIO()
-        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-            st.session_state.ledger_data.to_excel(writer, index=False)
-        st.download_button("📥 Download Excel Report", buf.getvalue(), "OrangeHouse_Report.xlsx")
+    # 3. Download
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+        st.session_state.ledger_data.to_excel(writer, index=False)
+    st.download_button("📥 Download Excel Report", buf.getvalue(), "OrangeHouse_Final.xlsx")
 
-# --- CASH COUNTER ---
 elif selected == "Cash Counter":
     st.title("💰 Cash Counter")
     notes = [500, 200, 100, 50, 20, 10, 5, 2, 1]
@@ -156,6 +148,6 @@ elif selected == "Cash Counter":
     c1, c2 = st.columns(2)
     for i, n in enumerate(notes):
         col = c1 if i % 2 == 0 else c2
-        count = col.number_input(f"₹ {n} Notes", min_value=0, key=f"n_{n}")
-        total += (n * count)
-    st.markdown(f"<div style='background-color:#ff7e00; padding:20px; border-radius:10px; color:white; text-align:center;'><h2>Total: ₹ {total:,.2f}</h2></div>", unsafe_allow_html=True)
+        cnt = col.number_input(f"₹ {n} Notes", min_value=0, key=f"note_{n}")
+        total += (n * cnt)
+    st.subheader(f"Total Cash: ₹ {total:,.2f}")
